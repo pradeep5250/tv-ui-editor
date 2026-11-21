@@ -5,34 +5,47 @@
 ![Android](https://img.shields.io/badge/Platform-Android%20TV%20%7C%20Fire%20OS-3DDC84?logo=android&logoColor=white)
 ![Shell](https://img.shields.io/badge/Scripting-Shell%20%2F%20ADB-4EAA25?logo=gnu-bash&logoColor=white)
 ![UI](https://img.shields.io/badge/UI-Minimalist%20Leanback-blue)
+![Resolution](https://img.shields.io/badge/Display-1080p%20%2F%204K%20UHD-purple)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![Author](https://img.shields.io/badge/Engineered%20by-Pradeep%20S-00e5ff)
 
 ---
 
-## 📸 Interface Preview & Screenshots
+## 📸 Interface Preview & Design Showcase
 
 <div align="center">
 
-### 🖥️ Clean TV Home Dashboard
-*Custom minimalist Leanback launcher displaying current clock, organized app grid, and direct HDMI input switching.*
+### 🌟 Current Live TV Home Interface
+*The customized Leanback home experience featuring custom anime/minimalist wallpapers, memory telemetry, live apps row, and instant-switch HDMI input buttons.*
 
-![TV UI Editor Home Screen](screen.png)
+<img src="screen.png" alt="Current TV UI Editor Design" width="900" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);" />
+
+</div>
 
 <br/>
 
-### 📊 System Status & Telemetry Dashboard
-*Real-time hardware status, network diagnostics, and package management monitor.*
+### 📱 UI Modes & Feature Gallery
 
-![TV System Status](tv_status.png)
+| 🖥️ Current Custom Home Interface | 📦 Extended Apps Matrix |
+| :---: | :---: |
+| <img src="screenshots/current-tv-dashboard.png" width="460" alt="Home Dashboard" /> | <img src="screenshots/app-grid-view.png" width="460" alt="Apps Grid" /> |
+| *Active TV dashboard with memory monitor & quick launch* | *Full-screen alphabetical catalog of installed streaming apps* |
 
-</div>
+| ⚙️ TV Options & Customizer Menu | 🎨 Atmosphere & Wallpaper Tint |
+| :---: | :---: |
+| <img src="screenshots/tv-options-customizer.png" width="460" alt="Options Menu" /> | <img src="screenshots/wallpaper-tint-editor.png" width="460" alt="Wallpaper Tint" /> |
+| *On-device settings, layout scaling, and app visibility controls* | *Dynamic tint overlay and contrast tuning for dark home-theaters* |
+
+| 📊 Telemetry & Device Diagnostics | 🎛️ Minimalist Adaptive Layout |
+| :---: | :---: |
+| <img src="screenshots/tv-status-diagnostics.png" width="460" alt="System Status" /> | <img src="screenshots/adaptive-minimalist.png" width="460" alt="Adaptive Layout" /> |
+| *Live hardware diagnostics, RAM usage, and network health* | *Ultra-compact focus mode for distraction-free viewing* |
 
 ---
 
 ## 📌 Overview
 
-Smart TVs and streaming sticks (such as Fire TV, Google TV, and Android TV) are increasingly cluttered with autoplay video advertisements, sponsored content, background telemetry, and slow OEM launcher bloatware.
+Smart TVs and streaming sticks (such as Fire TV, Google TV, and Android TV) are increasingly cluttered with autoplay video advertisements, sponsored recommendations, background telemetry, and slow OEM launcher bloatware.
 
 **TV UI Editor** transforms your television back into a fast, private, distraction-free display. It replaces the default sponsored launcher with a streamlined, ultra-fast custom launcher that boots directly into your apps and HDMI inputs without ads, sponsored recommendations, or performance overhead.
 
@@ -41,10 +54,10 @@ Smart TVs and streaming sticks (such as Fire TV, Google TV, and Android TV) are 
 ## ✨ Key Capabilities & Modules
 
 ### 1. 🚀 Minimalist TV Launcher (`launcher/`)
-- **Direct HDMI Switching:** Dedicated instant-switch buttons for HDMI 1, HDMI 2, and external gaming/console inputs.
+- **Direct HDMI Switching:** Dedicated instant-switch buttons for HDMI 1, HDMI 2, HDMI 3, and AV/Console inputs.
 - **Customizable App Matrix:** Add, hide, reorder, and categorize streaming apps with clean TV remote D-Pad navigation.
 - **Ultra-Low Memory Footprint:** Consumes less than 35MB RAM, ensuring snappy responsiveness even on entry-level streaming sticks.
-- **Ambient Clock & Status Bar:** Minimalist digital clock with date and Wi-Fi connection indicator.
+- **Ambient Clock & Status Bar:** Minimalist digital clock with date, Wi-Fi connection indicator, and live RAM availability monitor.
 
 ### 2. 🛡️ Smart TV Debloat Engine (`scripts/debloat.sh`)
 - Safely disables OEM promotional background services, sponsored recommendation daemons, and tracking trackers without breaking OS functionality.
@@ -77,10 +90,15 @@ tv-ui-editor/
 │   ├── configure.sh         # Custom launcher configuration manager
 │   ├── launcher.sh          # Default launcher override daemon
 │   └── restore.sh           # Factory reset and fallback recovery
-├── docs/                    # Architectural documentation and assets
-│   └── assets/              # Icons, banners, and vector assets
-├── screen.png               # High-resolution home screen screenshot
-├── tv_status.png            # Telemetry monitor screenshot
+├── screenshots/             # High-resolution gallery screenshots (1080p/720p)
+│   ├── current-tv-dashboard.png
+│   ├── app-grid-view.png
+│   ├── tv-options-customizer.png
+│   ├── wallpaper-tint-editor.png
+│   ├── tv-status-diagnostics.png
+│   └── adaptive-minimalist.png
+├── screen.png               # Featured home dashboard preview
+├── tv_status.png            # Featured telemetry preview
 ├── home.conf                # Launcher layout configuration file
 ├── LICENSE                  # MIT License
 └── README.md                # System documentation
