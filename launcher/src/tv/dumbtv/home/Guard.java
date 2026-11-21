@@ -59,12 +59,15 @@ public final class Guard extends AccessibilityService {
     private final Runnable retry = this::retryHome;
     private View cover;
     private boolean onAmazonHome;
-    private final BroadcastReceiver screenOn = new BroadcastReceiver() {
+    private static final class ScreenReceiver extends BroadcastReceiver {
+        private final Guard guard;
+        ScreenReceiver(Guard guard) { this.guard = guard; }
         @Override
         public void onReceive(Context c, Intent i) {
-            if (!paused && onAmazonHome) launchWhenCovered();
+            if (!paused && guard.onAmazonHome) guard.launchWhenCovered();
         }
-    };
+    }
+    private final BroadcastReceiver screenOn = new ScreenReceiver(this);
 
     /** Lets Amazon's home stay on screen until the user leaves it. */
     static void pause() {
@@ -204,16 +207,22 @@ public final class Guard extends AccessibilityService {
             return;
         }
         final ViewTreeObserver observer = cover.getViewTreeObserver();
-        observer.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
-            @Override
-            public boolean onPreDraw() {
-                cover.getViewTreeObserver().removeOnPreDrawListener(this);
-                handler.removeCallbacks(launch);
-                home(Guard.this, SHOWN_DELAY_MS);
-                return true;
-            }
-        });
+        observer.addOnPreDrawListener(new PreDrawListener(this));
         handler.postDelayed(launch, LAUNCH_FALLBACK_MS);
+    }
+
+    private static final class PreDrawListener implements ViewTreeObserver.OnPreDrawListener {
+        private final Guard guard;
+        PreDrawListener(Guard guard) { this.guard = guard; }
+        @Override
+        public boolean onPreDraw() {
+            if (guard.cover != null) {
+                guard.cover.getViewTreeObserver().removeOnPreDrawListener(this);
+            }
+            guard.handler.removeCallbacks(guard.launch);
+            home(guard, SHOWN_DELAY_MS);
+            return true;
+        }
     }
 
     /** The overlay window exists from service start; a GONE root keeps its surface hidden. */

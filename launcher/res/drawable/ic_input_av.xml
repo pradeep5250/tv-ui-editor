@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="16dp"
+    android:viewportWidth="36"
+    android:viewportHeight="16">
+    <!-- Yellow Jack -->
+    <path
+        android:fillColor="#FFFFD700"
+        android:pathData="M6,8m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0"/>
+    <path
+        android:fillColor="#FF080D18"
+        android:pathData="M6,8m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+    <!-- White Jack -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M18,8m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0"/>
+    <path
+        android:fillColor="#FF080D18"
+        android:pathData="M18,8m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+    <!-- Red Jack -->
+    <path
+        android:fillColor="#FFFF3333"
+        android:pathData="M30,8m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0"/>
+    <path
+        android:fillColor="#FF080D18"
+        android:pathData="M30,8m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+</vector>

@@ -45,14 +45,34 @@ final class Ui {
         return d;
     }
 
-    /** Accent fill when focused, a faint fill otherwise. */
+    static GradientDrawable round(int color, float radius, int strokeColor, int strokeWidth) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radius);
+        if (strokeWidth > 0) d.setStroke(strokeWidth, strokeColor);
+        return d;
+    }
+
+    /** Accent fill or border when focused, a faint glass fill otherwise. */
     static void focusStyle(TextView v, int accent, int idle, float radius) {
         StateListDrawable bg = new StateListDrawable();
-        bg.addState(new int[] {android.R.attr.state_focused}, round(accent, radius));
-        bg.addState(new int[0], round(idle, radius));
+        int focusedBorder = 0xFF00C8FF;
+        int focusedBg = 0x3300C8FF;
+        int idleBg = 0xB0101B32;
+        int idleBorder = 0x25FFFFFF;
+        int strokeW = dp(v.getContext(), 2.2f);
+        int idleStrokeW = dp(v.getContext(), 1f);
+
+        bg.addState(new int[] {android.R.attr.state_focused}, round(focusedBg, radius, focusedBorder, strokeW));
+        bg.addState(new int[0], round(idleBg, radius, idleBorder, idleStrokeW));
         v.setBackground(bg);
-        v.setTextColor(new ColorStateList(
+
+        ColorStateList colors = new ColorStateList(
                 new int[][] {{android.R.attr.state_focused}, {}},
-                new int[] {ink(accent), 0xD9FFFFFF}));
+                new int[] {focusedBorder, 0xD9FFFFFF});
+        v.setTextColor(colors);
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            v.setCompoundDrawableTintList(colors);
+        }
     }
 }

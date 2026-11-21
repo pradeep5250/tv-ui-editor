@@ -1,8 +1,10 @@
 package tv.dumbtv.home;
 
 import android.app.Activity;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -51,30 +53,36 @@ public final class Input extends Activity {
             .withEndAction(() -> name.setVisibility(View.GONE)).start();
     private final Runnable noSignal = () -> status(NO_SIGNAL);
 
-    private final TvView.TvInputCallback watch = new TvView.TvInputCallback() {
+    private static final class TvWatchCallback extends TvView.TvInputCallback {
+        private final Input input;
+        TvWatchCallback(Input input) {
+            this.input = input;
+        }
+
         @Override
         public void onConnectionFailed(String inputId) {
-            status(FAILED);
+            input.status(FAILED);
         }
 
         @Override
         public void onDisconnected(String inputId) {
-            status(FAILED);
+            input.status(FAILED);
         }
 
         @Override
         public void onVideoAvailable(String inputId) {
-            status(null);
+            input.status(null);
         }
 
         @Override
         public void onVideoUnavailable(String inputId, int reason) {
-            // Tuning and buffering are on the way to a picture; everything else means none is coming.
             boolean pending = reason == TvInputManager.VIDEO_UNAVAILABLE_REASON_TUNING
                     || reason == TvInputManager.VIDEO_UNAVAILABLE_REASON_BUFFERING;
-            if (!pending) status(NO_SIGNAL);
+            if (!pending) input.status(NO_SIGNAL);
         }
-    };
+    }
+
+    private final TvView.TvInputCallback watch = new TvWatchCallback(this);
 
     /**
      * The intent that opens {@code it} on this screen, or null when the TV's own app should get the
@@ -82,6 +90,14 @@ public final class Input extends Activity {
      * than Amazon's Live TV claims it.
      */
     static Intent intent(Context c, Config cfg, Item it, CharSequence name) {
+        if (it != null && it.id != null) {
+            Intent rtk = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(it.id));
+            rtk.setComponent(new ComponentName("com.realtek.tv", "com.realtek.tv.MainActivity"));
+            rtk.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (c.getPackageManager().resolveActivity(rtk, 0) != null) {
+                return rtk;
+            }
+        }
         String mode = cfg.get(Config.SWITCH);
         List<ResolveInfo> apps = c.getPackageManager().queryIntentActivities(it.intent, 0);
         boolean handOver = "tv".equals(mode) ? !apps.isEmpty()

@@ -356,12 +356,9 @@ final class Config {
         List<File> out = new ArrayList<>();
         addPictures(new File(dir, WALLPAPERS), out);
         if (shared != null) addPictures(new File(shared, WALLPAPERS), out);
-        Collections.sort(out, new Comparator<File>() {
-            @Override
-            public int compare(File a, File b) {
-                int byName = a.getName().compareToIgnoreCase(b.getName());
-                return byName != 0 ? byName : a.getPath().compareTo(b.getPath());
-            }
+        Collections.sort(out, (a, b) -> {
+            int byName = a.getName().compareToIgnoreCase(b.getName());
+            return byName != 0 ? byName : a.getPath().compareTo(b.getPath());
         });
         return out;
     }

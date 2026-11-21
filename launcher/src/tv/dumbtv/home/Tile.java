@@ -33,6 +33,7 @@ final class Tile extends View {
     private final TextPaint under = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private boolean moving;
     private final AfterglowTile afterglow;
+    private final Drawable inputIcon;
 
     Tile(Context c, Item item, String kind, CharSequence title, int cardW, int cardH,
             String labels, int accent) {
@@ -43,23 +44,35 @@ final class Tile extends View {
         this.cardW = cardW;
         this.cardH = cardH;
         boolean app = Catalog.APPS.equals(kind);
-        afterglow = app && "afterglow".equals(Config.get(c).get(Config.TILE_STYLE))
-                ? new AfterglowTile(c, item.id, title, accent) : null;
-        labelH = app && afterglow == null ? Ui.dp(c, 26) : 0;
+        afterglow = null;
+        labelH = 0;
         labelAlways = "always".equals(labels);
         labelOnFocus = "focus".equals(labels);
-        radius = Ui.dp(c, 10);
-        stroke = Ui.dp(c, afterglow == null ? 2.5f : 1f);
+        radius = Ui.dp(c, 14);
+        stroke = Ui.dp(c, 2.8f);
 
-        fill.setColor(app ? Ui.SURFACE : 0xFF17181B);
+        Drawable inIcon = null;
+        if (!app && title != null) {
+            String lower = title.toString().toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains("hdmi")) {
+                inIcon = c.getDrawable(R.drawable.ic_input_hdmi);
+            } else if (lower.contains("av")) {
+                inIcon = c.getDrawable(R.drawable.ic_input_av);
+            } else if (lower.contains("usb")) {
+                inIcon = c.getDrawable(R.drawable.ic_input_usb);
+            }
+        }
+        inputIcon = inIcon;
+
+        fill.setColor(app ? 0xCC101B32 : 0xCC0D1525);
         ring.setStyle(Paint.Style.STROKE);
         ring.setStrokeWidth(stroke);
-        ring.setColor(accent);
-        dot.setColor(0xFF34C759);
-        inner.setColor(Ui.TEXT);
+        ring.setColor(0xFF00C8FF);
+        dot.setColor(0xFF00C8FF);
+        inner.setColor(0xFFF5F8FF);
         inner.setTypeface(Ui.MEDIUM);
         inner.setTextAlign(Paint.Align.CENTER);
-        inner.setTextSize(Ui.dp(c, app ? 14 : 17));
+        inner.setTextSize(Ui.dp(c, app ? 13 : 15));
         under.setColor(Ui.TEXT);
         under.setTypeface(Ui.MEDIUM);
         under.setTextAlign(Paint.Align.CENTER);
@@ -96,10 +109,15 @@ final class Tile extends View {
         super.onFocusChanged(focused, direction, previous);
         animate().cancel();
         if (focused) {
-            animate().scaleX(FOCUS_SCALE).scaleY(FOCUS_SCALE).setDuration(110).start();
+            animate().scaleX(FOCUS_SCALE).scaleY(FOCUS_SCALE)
+                    .withLayer()
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f))
+                    .setDuration(160).start();
         } else {
-            setScaleX(1f);
-            setScaleY(1f);
+            animate().scaleX(1f).scaleY(1f)
+                    .withLayer()
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f))
+                    .setDuration(160).start();
         }
         invalidate();
     }
@@ -112,6 +130,12 @@ final class Tile extends View {
         canvas.drawRect(card, fill);
         if (afterglow != null) {
             afterglow.draw(canvas, icon, cardW, cardH);
+        } else if (Catalog.APPS.equals(kind) && icon != null) {
+            int size = Math.round(cardH * 0.52f);
+            int left = (cardW - size) / 2, top = Math.round(cardH * 0.12f);
+            icon.setBounds(left, top, left + size, top + size);
+            icon.draw(canvas);
+            drawLine(canvas, inner, cardW / 2f, cardH - cardH * 0.14f);
         } else if (banner != null) {
             banner.setBounds(0, 0, cardW, cardH);
             banner.draw(canvas);
@@ -122,7 +146,25 @@ final class Tile extends View {
             icon.draw(canvas);
             drawLine(canvas, inner, cardW / 2f, cardH - cardH * 13 / 100f);
         } else if (!Catalog.APPS.equals(kind)) {
-            drawLine(canvas, inner, cardW / 2f, cardH / 2f - (inner.ascent() + inner.descent()) / 2);
+            if (inputIcon != null) {
+                int iw = Math.max(1, inputIcon.getIntrinsicWidth());
+                int ih = Math.max(1, inputIcon.getIntrinsicHeight());
+                float scale = (float) cardH * 0.40f / (float) ih;
+                int iconW = Math.round(iw * scale);
+                int iconH = Math.round(ih * scale);
+                int gap = Ui.dp(getContext(), 8);
+                float textW = inner.measureText(title, 0, title.length());
+                float totalW = iconW + gap + textW;
+                float startX = (cardW - totalW) / 2f;
+                int iconTop = Math.round((cardH - iconH) / 2f);
+                inputIcon.setBounds(Math.round(startX), iconTop, Math.round(startX + iconW), iconTop + iconH);
+                inputIcon.draw(canvas);
+
+                float baseline = cardH / 2f - (inner.ascent() + inner.descent()) / 2f;
+                canvas.drawText(title, 0, title.length(), startX + iconW + gap + textW / 2f, baseline, inner);
+            } else {
+                drawLine(canvas, inner, cardW / 2f, cardH / 2f - (inner.ascent() + inner.descent()) / 2);
+            }
         }
         if (moving) canvas.drawColor(0x99000000);
         canvas.restore();
@@ -135,6 +177,8 @@ final class Tile extends View {
         }
         if (isFocused() || moving) {
             float half = stroke / 2;
+            ring.setColor(0xFF00C8FF);
+            ring.setStrokeWidth(Ui.dp(getContext(), 2.8f));
             ring.setPathEffect(moving ? new DashPathEffect(new float[] {stroke * 3, stroke * 2}, 0) : null);
             canvas.drawRoundRect(half, half, cardW - half, cardH - half, radius - half, radius - half, ring);
         }

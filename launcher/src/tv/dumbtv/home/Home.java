@@ -3,15 +3,23 @@ package tv.dumbtv.home;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
+import android.media.tv.TvContract;
 import android.media.tv.TvInputManager;
 import android.net.Uri;
 import android.os.Build;
@@ -60,6 +68,8 @@ public final class Home extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService colorIo = Executors.newSingleThreadExecutor();
     private final List<TextView> chips = new ArrayList<>();
+    private final List<View> dockChips = new ArrayList<>();
+    private Dialog allAppsDialog;
     private Config cfg;
     private TvInputManager tv;
     private int applied = -1, appsGeneration;
@@ -83,72 +93,126 @@ public final class Home extends Activity {
     private int displayedColor, targetColor;
     private boolean tintWallpaper;
 
-    private final BroadcastReceiver packages = new BroadcastReceiver() {
+    private static final class PackageReceiver extends BroadcastReceiver {
+        private final Home home;
+        PackageReceiver(Home home) {
+            this.home = home;
+        }
+
         @Override
         public void onReceive(Context c, Intent i) {
             Uri data = i.getData();
-            loadApps(data == null ? null : data.getSchemeSpecificPart());
+            home.loadApps(data == null ? null : data.getSchemeSpecificPart());
         }
-    };
+    }
+    private final BroadcastReceiver packages = new PackageReceiver(this);
 
-    private final BroadcastReceiver time = new BroadcastReceiver() {
+    private static final class TimeReceiver extends BroadcastReceiver {
+        private final Home home;
+        TimeReceiver(Home home) {
+            this.home = home;
+        }
+
         @Override
         public void onReceive(Context c, Intent i) {
-            tick();
+            home.tick();
         }
-    };
+    }
+    private final BroadcastReceiver time = new TimeReceiver(this);
 
-    private final TvInputManager.TvInputCallback inputWatch = new TvInputManager.TvInputCallback() {
+    private static final class InputWatchCallback extends TvInputManager.TvInputCallback {
+        private final Home home;
+        InputWatchCallback(Home home) {
+            this.home = home;
+        }
+
         @Override
         public void onInputStateChanged(String id, int state) {
-            loadInputs();
+            home.loadInputs();
         }
 
         @Override
         public void onInputAdded(String id) {
-            loadInputs();
+            home.loadInputs();
         }
 
         @Override
         public void onInputRemoved(String id) {
-            loadInputs();
+            home.loadInputs();
         }
 
         @Override
         public void onInputUpdated(String id) {
-            loadInputs();
+            home.loadInputs();
         }
-    };
+    }
+    private final TvInputManager.TvInputCallback inputWatch = new InputWatchCallback(this);
 
-    private final class Row {
+    private static final class UsbReceiver extends BroadcastReceiver {
+        private final Home home;
+        UsbReceiver(Home home) {
+            this.home = home;
+        }
+
+        @Override
+        public void onReceive(Context c, Intent i) {
+            home.loadInputs();
+            if (Intent.ACTION_MEDIA_MOUNTED.equals(i.getAction()) && home.resumed) {
+                Toast.makeText(home, "USB Drive Connected", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+    private final BroadcastReceiver usbReceiver = new UsbReceiver(this);
+
+    static final class CenteredHorizontalScrollView extends HorizontalScrollView {
+        CenteredHorizontalScrollView(Context c) {
+            super(c);
+        }
+
+        @Override
+        protected int computeScrollDeltaToGetChildRectOnScreen(Rect r) {
+            if (getChildCount() == 0) return 0;
+            int range = Math.max(0, getChildAt(0).getWidth() - (getWidth() - getPaddingLeft() - getPaddingRight()));
+            int target = Math.max(0, Math.min(range, r.centerX() - getWidth() / 2));
+            return target - getScrollX();
+        }
+    }
+
+    private static final class Row {
+        final Home home;
         final String kind;
+        final LinearLayout header;
         final TextView title;
         final HorizontalScrollView scroll;
         final LinearLayout strip;
         final Grid grid;
         List<Item> all = new ArrayList<>();
 
-        Row(String kind, String name, LinearLayout parent) {
+        Row(Home home, String kind, String name, LinearLayout parent) {
+            this.home = home;
             this.kind = kind;
-            int edge = dp(56), bleed = dp(14);
-            title = Ui.text(Home.this, 12, Ui.FAINT, Ui.MEDIUM);
+            int edge = home.dp(56), bleed = home.dp(14);
+            header = new LinearLayout(home);
+            header.setOrientation(LinearLayout.HORIZONTAL);
+            header.setGravity(Gravity.CENTER_VERTICAL);
+            header.setPadding(edge, home.dp(20), edge, home.dp(4));
+
+            View bar = new View(home);
+            bar.setBackground(Ui.round(0xFF00C8FF, home.dp(2)));
+            LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(home.dp(3.5f), home.dp(15));
+            barLp.rightMargin = home.dp(8);
+            header.addView(bar, barLp);
+
+            title = Ui.text(home, 13, 0xFFF5F8FF, Ui.MEDIUM);
             title.setText(name.toUpperCase(Locale.ROOT));
             title.setLetterSpacing(0.14f);
-            title.setPadding(edge, dp(20), edge, dp(2));
-            strip = new LinearLayout(Home.this);
+            header.addView(title);
+
+            strip = new LinearLayout(home);
             strip.setClipChildren(false);
             strip.setClipToPadding(false);
-            strip.setPadding(bleed, dp(12), bleed, dp(8));
-            scroll = new HorizontalScrollView(Home.this) {
-                /** Keeps the focused tile centered, except near either end of the row. */
-                @Override
-                protected int computeScrollDeltaToGetChildRectOnScreen(Rect r) {
-                    if (getChildCount() == 0) return 0;
-                    int range = Math.max(0, getChildAt(0).getWidth() - (getWidth() - getPaddingLeft() - getPaddingRight()));
-                    int target = Math.max(0, Math.min(range, r.centerX() - getWidth() / 2));
-                    return target - getScrollX();
-                }
-            };
+            strip.setPadding(bleed, home.dp(12), bleed, home.dp(8));
+            scroll = new CenteredHorizontalScrollView(home);
             scroll.setFocusable(false);
             scroll.setHorizontalScrollBarEnabled(false);
             scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -156,21 +220,21 @@ public final class Home extends Activity {
             scroll.setClipToPadding(false);
             scroll.setPadding(edge - bleed, 0, edge - bleed, 0);
             scroll.addView(strip, new FrameLayout.LayoutParams(WRAP, WRAP));
-            grid = new Grid(Home.this);
-            grid.setPadding(edge, dp(12), edge, dp(8));
-            parent.addView(title, new LinearLayout.LayoutParams(MATCH, WRAP));
+            grid = new Grid(home);
+            grid.setPadding(edge, home.dp(12), edge, home.dp(8));
+            parent.addView(header, new LinearLayout.LayoutParams(MATCH, WRAP));
             parent.addView(scroll, new LinearLayout.LayoutParams(MATCH, WRAP));
             parent.addView(grid, new LinearLayout.LayoutParams(MATCH, WRAP));
         }
 
         /** Whichever container currently holds the tiles, following Options › Layout. */
         ViewGroup tiles() {
-            return "grid".equals(cfg.get(Config.LAYOUT)) ? grid : strip;
+            return "grid".equals(home.cfg.get(Config.LAYOUT)) ? grid : strip;
         }
 
         void setVisible(boolean on) {
-            boolean gridMode = "grid".equals(cfg.get(Config.LAYOUT));
-            title.setVisibility(on ? View.VISIBLE : View.GONE);
+            boolean gridMode = "grid".equals(home.cfg.get(Config.LAYOUT));
+            header.setVisibility(on ? View.VISIBLE : View.GONE);
             scroll.setVisibility(on && !gridMode ? View.VISIBLE : View.GONE);
             grid.setVisibility(on && gridMode ? View.VISIBLE : View.GONE);
         }
@@ -192,6 +256,21 @@ public final class Home extends Activity {
         f.addAction(Intent.ACTION_PACKAGE_CHANGED);
         f.addDataScheme("package");
         registerReceiver(packages, f);
+
+        IntentFilter usbFilter = new IntentFilter();
+        usbFilter.addAction(Intent.ACTION_MEDIA_MOUNTED);
+        usbFilter.addAction(Intent.ACTION_MEDIA_UNMOUNTED);
+        usbFilter.addAction(Intent.ACTION_MEDIA_REMOVED);
+        usbFilter.addAction(Intent.ACTION_MEDIA_EJECT);
+        usbFilter.addAction(Intent.ACTION_MEDIA_BAD_REMOVAL);
+        usbFilter.addDataScheme("file");
+        registerReceiver(usbReceiver, usbFilter);
+
+        IntentFilter usbDeviceFilter = new IntentFilter();
+        usbDeviceFilter.addAction("android.hardware.usb.action.USB_DEVICE_ATTACHED");
+        usbDeviceFilter.addAction("android.hardware.usb.action.USB_DEVICE_DETACHED");
+        registerReceiver(usbReceiver, usbDeviceFilter);
+
         Keeper.start(this);
         if (tv != null) tv.registerCallback(inputWatch, ui);
         firstApps(catalog, times);
@@ -259,6 +338,7 @@ public final class Home extends Activity {
     @Override
     protected void onDestroy() {
         unregisterReceiver(packages);
+        try { unregisterReceiver(usbReceiver); } catch (Exception ignored) {}
         if (tv != null) tv.unregisterCallback(inputWatch);
         io.shutdownNow();
         colorIo.shutdownNow();
@@ -421,6 +501,179 @@ public final class Home extends Activity {
         return y;
     }
 
+    static final class SafeScrollView extends ScrollView {
+        private final Home home;
+
+        SafeScrollView(Home home) {
+            super(home);
+            this.home = home;
+        }
+
+        /** Scrolls in whole rows: the focused row shows complete, and a row starts at the top edge. */
+        @Override
+        protected int computeScrollDeltaToGetChildRectOnScreen(Rect r) {
+            return home.rowTarget(this, r) - getScrollY();
+        }
+
+        @Override
+        protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            super.onLayout(changed, l, t, r, b);
+            home.fitBottom(this);
+        }
+
+        /**
+         * Up and down only move the focus; scrolling follows it. Left to ScrollView, a press
+         * with nothing focusable that way scrolls half a screen and leaves rows cut.
+         */
+        @Override
+        public boolean executeKeyEvent(KeyEvent e) {
+            switch (e.getKeyCode()) {
+                case KeyEvent.KEYCODE_DPAD_UP:
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                case KeyEvent.KEYCODE_PAGE_UP:
+                case KeyEvent.KEYCODE_PAGE_DOWN:
+                case KeyEvent.KEYCODE_SPACE:
+                    return false;
+                default:
+                    return super.executeKeyEvent(e);
+            }
+        }
+    }
+
+    static final class HomeColumnLayout extends LinearLayout {
+        private final Home home;
+
+        HomeColumnLayout(Home home) {
+            super(home);
+            this.home = home;
+        }
+
+        @Override
+        public View focusSearch(View focused, int direction) {
+            return home.columnFocusSearch(this, focused, direction);
+        }
+
+        View superFocusSearch(View focused, int direction) {
+            return super.focusSearch(focused, direction);
+        }
+    }
+
+    View columnFocusSearch(HomeColumnLayout column, View focused, int direction) {
+        if (direction == View.FOCUS_DOWN && chips.contains(focused)) {
+            View remembered = rememberedTile(lastFocusedKind);
+            if (remembered != null) return remembered;
+            View below = nearest(apps.tiles(), focused);
+            if (below != null) return below;
+        }
+        if (dockChips.contains(focused)) {
+            int idx = dockChips.indexOf(focused);
+            if (direction == View.FOCUS_LEFT) {
+                return idx > 0 ? dockChips.get(idx - 1) : focused;
+            }
+            if (direction == View.FOCUS_RIGHT) {
+                return idx < dockChips.size() - 1 ? dockChips.get(idx + 1) : focused;
+            }
+            if (direction == View.FOCUS_UP) {
+                View remembered = rememberedTile(Catalog.INPUTS);
+                if (remembered != null) return remembered;
+                View above = nearest(inputs.tiles(), focused);
+                if (above != null) return above;
+            }
+            if (direction == View.FOCUS_DOWN) {
+                return focused;
+            }
+        }
+        if (focused instanceof Tile
+                && focused.getParent() instanceof ViewGroup) {
+            Tile tile = (Tile) focused;
+            ViewGroup parent = (ViewGroup) tile.getParent();
+            int idx = parent.indexOfChild(tile);
+            int count = parent.getChildCount();
+            boolean grid = parent instanceof Grid;
+            int cols = grid ? ((Grid) parent).columns() : 1;
+
+            // Left and right stop at the edge of a row instead of jumping away
+            // from it: no tile of another row takes the focus.
+            if (direction == View.FOCUS_LEFT) {
+                boolean edge = grid ? idx % cols == 0 : idx == 0;
+                if (edge) return focused;
+            }
+            if (direction == View.FOCUS_RIGHT) {
+                boolean edge = grid
+                        ? (idx + 1) % cols == 0 || idx == count - 1
+                        : idx == count - 1;
+                if (edge) return focused;
+            }
+
+            // Down goes to the tile below; only the last line can be shorter, and a
+            // tile with nothing under it takes the nearest tile of that line.
+            // Down from the last line of the apps row lands on the input that was
+            // focused last, not on whichever one happens to be closest.
+            if (direction == View.FOCUS_DOWN
+                    && Catalog.APPS.equals(tile.kind)) {
+                int target = grid ? belowInGrid(parent, tile) : -1;
+                if (target < 0) {
+                    View remembered = rememberedTile(Catalog.INPUTS);
+                    if (remembered != null) return remembered;
+                    View below = nearest(inputs.tiles(), focused);
+                    if (below != null) return below;
+                } else {
+                    return parent.getChildAt(target);
+                }
+            }
+            // Up from the first line of the inputs row goes back to the app that was
+            // focused last.
+            if (direction == View.FOCUS_UP
+                    && Catalog.INPUTS.equals(tile.kind)) {
+                boolean hasAbove = grid && aboveInGrid(parent, tile);
+                if (!hasAbove) {
+                    View remembered = rememberedTile(Catalog.APPS);
+                    if (remembered != null) return remembered;
+                    View above = nearest(apps.tiles(), focused);
+                    if (above != null) return above;
+                }
+            }
+            // Down from the inputs row goes to the quick settings dock
+            if (direction == View.FOCUS_DOWN
+                    && Catalog.INPUTS.equals(tile.kind)) {
+                if (!dockChips.isEmpty()) {
+                    int[] at = new int[2];
+                    focused.getLocationOnScreen(at);
+                    int x = at[0] + focused.getWidth() / 2;
+                    View best = null;
+                    int bestGap = Integer.MAX_VALUE;
+                    for (View d : dockChips) {
+                        d.getLocationOnScreen(at);
+                        int gap = Math.abs(at[0] + d.getWidth() / 2 - x);
+                        if (gap < bestGap) {
+                            bestGap = gap;
+                            best = d;
+                        }
+                    }
+                    return best != null ? best : dockChips.get(0);
+                }
+            }
+        }
+        View next = column.superFocusSearch(focused, direction);
+        if (next == null && direction == View.FOCUS_UP && !chips.isEmpty()) {
+            int[] at = new int[2];
+            focused.getLocationOnScreen(at);
+            int x = at[0] + focused.getWidth() / 2;
+            TextView best = null;
+            int bestGap = Integer.MAX_VALUE;
+            for (TextView c : chips) {
+                c.getLocationOnScreen(at);
+                int gap = Math.abs(at[0] + c.getWidth() / 2 - x);
+                if (gap < bestGap) {
+                    bestGap = gap;
+                    best = c;
+                }
+            }
+            return best != null ? best : chips.get(0);
+        }
+        return next;
+    }
+
     private View build() {
         root = new FrameLayout(this);
         wall = new ImageView(this);
@@ -431,37 +684,7 @@ public final class Home extends Activity {
         tint = new View(this);
         root.addView(tint, new FrameLayout.LayoutParams(MATCH, MATCH));
 
-        ScrollView scroll = new ScrollView(this) {
-            /** Scrolls in whole rows: the focused row shows complete, and a row starts at the top edge. */
-            @Override
-            protected int computeScrollDeltaToGetChildRectOnScreen(Rect r) {
-                return rowTarget(this, r) - getScrollY();
-            }
-
-            @Override
-            protected void onLayout(boolean changed, int l, int t, int r, int b) {
-                super.onLayout(changed, l, t, r, b);
-                fitBottom(this);
-            }
-
-            /**
-             * Up and down only move the focus; scrolling follows it. Left to ScrollView, a press
-             * with nothing focusable that way scrolls half a screen and leaves rows cut.
-             */
-            @Override
-            public boolean executeKeyEvent(KeyEvent e) {
-                switch (e.getKeyCode()) {
-                    case KeyEvent.KEYCODE_DPAD_UP:
-                    case KeyEvent.KEYCODE_DPAD_DOWN:
-                    case KeyEvent.KEYCODE_PAGE_UP:
-                    case KeyEvent.KEYCODE_PAGE_DOWN:
-                    case KeyEvent.KEYCODE_SPACE:
-                        return false;
-                    default:
-                        return super.executeKeyEvent(e);
-                }
-            }
-        };
+        SafeScrollView scroll = new SafeScrollView(this);
         scroll.setFocusable(false);
         scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
@@ -469,86 +692,7 @@ public final class Home extends Activity {
         scroll.setClipChildren(false);
         root.addView(scroll, new FrameLayout.LayoutParams(MATCH, MATCH));
 
-        LinearLayout column = new LinearLayout(this) {
-            @Override
-            public View focusSearch(View focused, int direction) {
-                if (direction == View.FOCUS_DOWN && chips.contains(focused)) {
-                    View remembered = rememberedTile(lastFocusedKind);
-                    if (remembered != null) return remembered;
-                    View below = nearest(apps.tiles(), focused);
-                    if (below != null) return below;
-                }
-                if (focused instanceof Tile
-                        && focused.getParent() instanceof ViewGroup) {
-                    Tile tile = (Tile) focused;
-                    ViewGroup parent = (ViewGroup) tile.getParent();
-                    int idx = parent.indexOfChild(tile);
-                    int count = parent.getChildCount();
-                    boolean grid = parent instanceof Grid;
-                    int cols = grid ? ((Grid) parent).columns() : 1;
-
-                    // Left and right stop at the edge of a row instead of jumping away
-                    // from it: no tile of another row takes the focus.
-                    if (direction == View.FOCUS_LEFT) {
-                        boolean edge = grid ? idx % cols == 0 : idx == 0;
-                        if (edge) return focused;
-                    }
-                    if (direction == View.FOCUS_RIGHT) {
-                        boolean edge = grid
-                                ? (idx + 1) % cols == 0 || idx == count - 1
-                                : idx == count - 1;
-                        if (edge) return focused;
-                    }
-
-                    // Down goes to the tile below; only the last line can be shorter, and a
-                    // tile with nothing under it takes the nearest tile of that line.
-                    // Down from the last line of the apps row lands on the input that was
-                    // focused last, not on whichever one happens to be closest.
-                    if (direction == View.FOCUS_DOWN
-                            && Catalog.APPS.equals(tile.kind)) {
-                        int target = grid ? belowInGrid(parent, tile) : -1;
-                        if (target < 0) {
-                            View remembered = rememberedTile(Catalog.INPUTS);
-                            if (remembered != null) return remembered;
-                            View below = nearest(inputs.tiles(), focused);
-                            if (below != null) return below;
-                        } else {
-                            return parent.getChildAt(target);
-                        }
-                    }
-                    // Up from the first line of the inputs row goes back to the app that was
-                    // focused last.
-                    if (direction == View.FOCUS_UP
-                            && Catalog.INPUTS.equals(tile.kind)) {
-                        boolean hasAbove = grid && aboveInGrid(parent, tile);
-                        if (!hasAbove) {
-                            View remembered = rememberedTile(Catalog.APPS);
-                            if (remembered != null) return remembered;
-                            View above = nearest(apps.tiles(), focused);
-                            if (above != null) return above;
-                        }
-                    }
-                }
-                View next = super.focusSearch(focused, direction);
-                if (next == null && direction == View.FOCUS_UP && !chips.isEmpty()) {
-                    int[] at = new int[2];
-                    focused.getLocationOnScreen(at);
-                    int x = at[0] + focused.getWidth() / 2;
-                    TextView best = null;
-                    int bestGap = Integer.MAX_VALUE;
-                    for (TextView c : chips) {
-                        c.getLocationOnScreen(at);
-                        int gap = Math.abs(at[0] + c.getWidth() / 2 - x);
-                        if (gap < bestGap) {
-                            bestGap = gap;
-                            best = c;
-                        }
-                    }
-                    return best != null ? best : chips.get(0);
-                }
-                return next;
-            }
-        };
+        HomeColumnLayout column = new HomeColumnLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         column.setClipChildren(false);
         column.setClipToPadding(false);
@@ -574,13 +718,203 @@ public final class Home extends Activity {
         under.leftMargin = dp(2);
         when.addView(meter, under);
         head.addView(when, new LinearLayout.LayoutParams(0, WRAP, 1f));
-        head.addView(chip("Options", v -> startActivity(new Intent(this, Options.class))));
-        head.addView(chip("Settings", v -> openSettings()));
+        head.addView(chip(R.drawable.ic_wifi, "Network", v -> openNetworkSettings()));
+        head.addView(chip(R.drawable.ic_options, "Apps", v -> showAllApps()));
+        head.addView(chip(R.drawable.ic_tune, "Options", v -> startActivity(new Intent(this, Options.class))));
+        head.addView(chip(R.drawable.ic_settings, "Settings", v -> openSettings()));
         column.addView(head, new LinearLayout.LayoutParams(MATCH, WRAP));
 
-        apps = new Row(Catalog.APPS, "Apps", column);
-        inputs = new Row(Catalog.INPUTS, "Inputs", column);
+        apps = new Row(this, Catalog.APPS, "Apps", column);
+        inputs = new Row(this, Catalog.INPUTS, "Inputs", column);
+
+        // Bottom Quick Settings Dock
+        LinearLayout dockWrapper = new LinearLayout(this);
+        dockWrapper.setOrientation(LinearLayout.VERTICAL);
+        dockWrapper.setPadding(dp(56), dp(28), dp(56), dp(36));
+        dockWrapper.setClipChildren(false);
+        dockWrapper.setClipToPadding(false);
+
+        LinearLayout dockBar = new LinearLayout(this);
+        dockBar.setOrientation(LinearLayout.HORIZONTAL);
+        dockBar.setGravity(Gravity.CENTER_VERTICAL);
+        dockBar.setClipChildren(false);
+        dockBar.setClipToPadding(false);
+
+        GradientDrawable dockBg = new GradientDrawable();
+        dockBg.setColor(0xCC0D1629);
+        dockBg.setCornerRadius(dp(22));
+        dockBg.setStroke(dp(1), 0x3500C8FF);
+        dockBar.setBackground(dockBg);
+        dockBar.setPadding(dp(8), dp(6), dp(8), dp(6));
+
+        addDockItem(dockBar, R.drawable.ic_wifi, "Wi-Fi", v -> openNetworkSettings());
+        addDockSeparator(dockBar);
+        addDockItem(dockBar, R.drawable.ic_bluetooth, "Bluetooth", v -> openBluetoothSettings());
+        addDockSeparator(dockBar);
+        addDockItem(dockBar, R.drawable.ic_picture, "Picture Mode", v -> openDisplaySettings());
+        addDockSeparator(dockBar);
+        addDockItem(dockBar, R.drawable.ic_sound, "Sound", v -> openSoundSettings());
+        addDockSeparator(dockBar);
+        addDockItem(dockBar, R.drawable.ic_display, "Display", v -> openDisplaySettings());
+        addDockSeparator(dockBar);
+        addDockItem(dockBar, R.drawable.ic_timer, "Sleep Timer", v -> openDateSettings());
+        addDockSeparator(dockBar);
+        addDockItem(dockBar, R.drawable.ic_screensaver, "Screen Saver", v -> openScreensaverSettings());
+        addDockSeparator(dockBar);
+        addDockItem(dockBar, R.drawable.ic_settings, "Device Settings", v -> openSettings());
+
+        dockWrapper.addView(dockBar, new LinearLayout.LayoutParams(MATCH, WRAP));
+        column.addView(dockWrapper, new LinearLayout.LayoutParams(MATCH, WRAP));
+
         return root;
+    }
+
+    private void addDockSeparator(LinearLayout parent) {
+        View sep = new View(this);
+        sep.setBackgroundColor(0x28FFFFFF);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(1), dp(26));
+        lp.leftMargin = dp(2);
+        lp.rightMargin = dp(2);
+        parent.addView(sep, lp);
+    }
+
+    private void addDockItem(LinearLayout parent, int iconRes, String label, View.OnClickListener click) {
+        TextView v = Ui.text(this, 11, 0xFFF5F8FF, Ui.MEDIUM);
+        v.setText(label);
+        v.setGravity(Gravity.CENTER);
+        Drawable icon = iconRes != 0 ? getDrawable(iconRes) : null;
+        if (icon != null) {
+            icon.setBounds(0, 0, dp(20), dp(20));
+            v.setCompoundDrawables(null, icon, null, null);
+            v.setCompoundDrawablePadding(dp(4));
+        }
+        v.setPadding(dp(12), dp(8), dp(12), dp(8));
+        v.setFocusable(true);
+        v.setClickable(true);
+        v.setOnClickListener(click);
+
+        StateListDrawable bg = new StateListDrawable();
+        int focusedBorder = 0xFF00C8FF;
+        int focusedBg = 0x4000C8FF;
+        int strokeW = dp(2.2f);
+        bg.addState(new int[] {android.R.attr.state_focused}, Ui.round(focusedBg, dp(14), focusedBorder, strokeW));
+        bg.addState(new int[0], Ui.round(0x00000000, dp(14)));
+        v.setBackground(bg);
+
+        ColorStateList colors = new ColorStateList(
+                new int[][] {{android.R.attr.state_focused}, {}},
+                new int[] {focusedBorder, 0xD9FFFFFF});
+        v.setTextColor(colors);
+        if (Build.VERSION.SDK_INT >= 23) {
+            v.setCompoundDrawableTintList(colors);
+        }
+
+        v.setOnFocusChangeListener((view, has) -> {
+            view.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f)
+                    .withLayer()
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f))
+                    .setDuration(160).start();
+            if (has) focusBackground(null);
+        });
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP, 1f);
+        v.setLayoutParams(lp);
+        parent.addView(v);
+        dockChips.add(v);
+    }
+
+    private void showAllApps() {
+        if (allAppsDialog != null && allAppsDialog.isShowing()) return;
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        allAppsDialog = dialog;
+
+        FrameLayout rootFrame = new FrameLayout(this);
+        rootFrame.setBackgroundColor(0xF4080D18);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setClipChildren(false);
+        scroll.setClipToPadding(false);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(56), dp(40), dp(56), dp(40));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        View bar = new View(this);
+        bar.setBackground(Ui.round(0xFF00C8FF, dp(2)));
+        header.addView(bar, new LinearLayout.LayoutParams(dp(4), dp(22)));
+
+        TextView title = Ui.text(this, 18, 0xFFF5F8FF, Ui.MEDIUM);
+        title.setText("  ALL APPLICATIONS");
+        title.setLetterSpacing(0.12f);
+        header.addView(title);
+        content.addView(header, new LinearLayout.LayoutParams(MATCH, WRAP));
+
+        Grid grid = new Grid(this);
+        grid.setPadding(0, dp(24), 0, dp(16));
+        int[] size = cardSize();
+        int accent = cfg.accent();
+        String labels = Config.get(this).get(Config.LABELS);
+
+        for (Item item : apps.all) {
+            Tile tile = new Tile(this, item, Catalog.APPS, Catalog.label(cfg, item), size[0], size[1], labels, accent);
+            tile.setOnClickListener(v -> {
+                dialog.dismiss();
+                open((Tile) v);
+            });
+            tile.setOnLongClickListener(v -> {
+                if (!locked()) menu((Tile) v);
+                return true;
+            });
+            grid.addView(tile);
+            if (!item.artRequested) loadArt(item);
+        }
+
+        content.addView(grid, new LinearLayout.LayoutParams(MATCH, WRAP));
+        scroll.addView(content, new FrameLayout.LayoutParams(MATCH, WRAP));
+        rootFrame.addView(scroll, new FrameLayout.LayoutParams(MATCH, MATCH));
+
+        dialog.setContentView(rootFrame);
+        dialog.show();
+    }
+
+    private void openBluetoothSettings() {
+        startActivitySafe(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
+                new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    private void openDisplaySettings() {
+        startActivitySafe(new Intent(Settings.ACTION_DISPLAY_SETTINGS),
+                new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    private void openSoundSettings() {
+        startActivitySafe(new Intent(Settings.ACTION_SOUND_SETTINGS),
+                new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    private void openDateSettings() {
+        startActivitySafe(new Intent(Settings.ACTION_DATE_SETTINGS),
+                new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    private void openScreensaverSettings() {
+        startActivitySafe(new Intent(Settings.ACTION_DREAM_SETTINGS),
+                new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    private void startActivitySafe(Intent... intents) {
+        for (Intent intent : intents) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+                return;
+            } catch (Exception ignored) {}
+        }
     }
 
     /**
@@ -637,21 +971,30 @@ public final class Home extends Activity {
         return "on".equals(cfg.get(Config.LOCK));
     }
 
-    private TextView chip(String label, View.OnClickListener click) {
-        TextView v = Ui.text(this, 14, Ui.TEXT, Ui.MEDIUM);
+    private TextView chip(int iconRes, String label, View.OnClickListener click) {
+        TextView v = Ui.text(this, 12, Ui.TEXT, Ui.MEDIUM);
         v.setText(label);
         v.setGravity(Gravity.CENTER);
-        v.setPadding(dp(18), dp(9), dp(18), dp(9));
+        Drawable icon = iconRes != 0 ? getDrawable(iconRes) : null;
+        if (icon != null) {
+            icon.setBounds(0, 0, dp(22), dp(22));
+            v.setCompoundDrawables(null, icon, null, null);
+            v.setCompoundDrawablePadding(dp(4));
+        }
+        v.setPadding(dp(16), dp(8), dp(16), dp(8));
         v.setFocusable(true);
         v.setClickable(true);
         v.setOnClickListener(click);
         v.setOnFocusChangeListener((view, has) -> {
-            view.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(110).start();
+            view.animate().scaleX(has ? 1.10f : 1f).scaleY(has ? 1.10f : 1f)
+                    .withLayer()
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f))
+                    .setDuration(160).start();
             if (has) focusBackground(null);
         });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP, WRAP);
-        lp.leftMargin = dp(10);
-        lp.topMargin = dp(6);
+        lp.leftMargin = dp(12);
+        lp.topMargin = dp(2);
         v.setLayoutParams(lp);
         chips.add(v);
         return v;
@@ -661,7 +1004,7 @@ public final class Home extends Activity {
         applied = cfg.version();
         int accent = cfg.accent();
         for (TextView c : chips) {
-            Ui.focusStyle(c, accent, 0x14FFFFFF, dp(18));
+            Ui.focusStyle(c, accent, 0x14FFFFFF, dp(14));
             c.setVisibility(locked() ? View.GONE : View.VISIBLE);
         }
         meter.setVisibility("on".equals(cfg.get(Config.MEMORY)) ? View.VISIBLE : View.GONE);
@@ -696,8 +1039,48 @@ public final class Home extends Activity {
     }
 
     private void loadInputs() {
-        inputs.all = Catalog.inputs(this, tv);
+        List<Item> list = Catalog.inputs(this, tv);
+        boolean usbConnected = isUsbConnected();
+        Intent usbIntent = getUsbLaunchIntent();
+        Item usb = new Item("input.usb", "USB", usbIntent);
+        usb.state = usbConnected ? TvInputManager.INPUT_STATE_CONNECTED : TvInputManager.INPUT_STATE_DISCONNECTED;
+        list.add(usb);
+        inputs.all = list;
         render(inputs);
+    }
+
+    private boolean isUsbConnected() {
+        try {
+            android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
+            if (sm != null && Build.VERSION.SDK_INT >= 24) {
+                for (android.os.storage.StorageVolume sv : sm.getStorageVolumes()) {
+                    if (sv.isRemovable() && android.os.Environment.MEDIA_MOUNTED.equals(sv.getState())) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        try {
+            java.io.File storage = new java.io.File("/storage");
+            java.io.File[] files = storage.listFiles();
+            if (files != null) {
+                for (java.io.File f : files) {
+                    String name = f.getName();
+                    if (!"emulated".equalsIgnoreCase(name) && !"self".equalsIgnoreCase(name) && f.canRead()) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private Intent getUsbLaunchIntent() {
+        android.content.pm.PackageManager pm = getPackageManager();
+        Intent it = pm.getLaunchIntentForPackage("com.rtk.mediabrowser");
+        if (it == null) it = pm.getLaunchIntentForPackage("com.alphainventor.filemanager");
+        if (it == null) it = new Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse("content://media/external/file"), "*/*");
+        return it;
     }
 
     /** The last-used times to sort {@code kind} by, or null when it keeps the user's order. */
@@ -732,8 +1115,10 @@ public final class Home extends Activity {
         boolean enabled = !Catalog.INPUTS.equals(row.kind) || "on".equals(cfg.get(Config.INPUTS));
         List<Item> shown = enabled ? Catalog.visible(cfg, row.kind, row.all, recentFor(row.kind))
                 : new ArrayList<>();
+        boolean isApps = Catalog.APPS.equals(row.kind);
         int[] size = cardSize();
-        int w = size[0], h = Catalog.APPS.equals(row.kind) ? size[1] : Math.round(size[1] * 0.56f);
+        int w = isApps ? size[0] : dp(148);
+        int h = isApps ? size[1] : dp(50);
         String labels = cfg.get(Config.LABELS);
         int accent = cfg.accent();
         int index = 0, restore = -1;
@@ -760,7 +1145,7 @@ public final class Home extends Activity {
                 target.addView(t, new ViewGroup.LayoutParams(WRAP, WRAP));
             } else {
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP, WRAP);
-                lp.rightMargin = dp(18);
+                lp.rightMargin = isApps ? dp(18) : dp(12);
                 target.addView(t, lp);
             }
             if (it.id.equals(keep)) restore = index;
@@ -1023,6 +1408,15 @@ public final class Home extends Activity {
         return BitmapFactory.decodeFile(f.getPath(), o);
     }
 
+    private void openNetworkSettings() {
+        Intent wifi = new Intent(Settings.ACTION_WIFI_SETTINGS);
+        if (wifi.resolveActivity(getPackageManager()) != null) {
+            launch(wifi, null);
+        } else {
+            launch(new Intent(Settings.ACTION_WIRELESS_SETTINGS), null);
+        }
+    }
+
     /**
      * Fire OS answers the generic settings action with a stub that reopens Amazon's home, which
      * Guard then replaces with ours. The TV settings entry point opens the real settings screen,
@@ -1072,13 +1466,48 @@ public final class Home extends Activity {
             launch(appIntent(t.item), t.item.id);
             return;
         }
-        Intent own = Input.intent(this, cfg, t.item, Catalog.label(cfg, t.item));
-        // The built-in screen goes on top of this one in the same task, so BACK returns here and
-        // the HOME takeover's singleTask relaunch clears it. NEW_TASK | RESET_TASK_IF_NEEDED on an
-        // activity of the task that is already in front only brings that task forward and starts
-        // nothing (ActivityStarter.complyActivityFlags), so it is started plainly.
-        if (own != null) startActivity(own);
-        else launch(new Intent(t.item.intent), null);
+        if ("input.usb".equals(t.item.id)) {
+            launch(getUsbLaunchIntent(), null);
+            return;
+        }
+        launchHardwareInput(t.item);
+    }
+
+    private void launchHardwareInput(Item it) {
+        Uri uri = TvContract.buildChannelUriForPassthroughInput(it.id);
+        PackageManager pm = getPackageManager();
+
+        // 1. Direct hardware tuning via TV's native player (Realtek / Thomson RtkLiveTv)
+        Intent rtk = new Intent(Intent.ACTION_VIEW, uri);
+        rtk.setComponent(new ComponentName("com.realtek.tv", "com.realtek.tv.MainActivity"));
+        rtk.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (pm.resolveActivity(rtk, 0) != null) {
+            launch(rtk, "com.realtek.tv");
+            return;
+        }
+
+        // 2. Direct tuning via Google TV / Live TV
+        Intent gtv = new Intent(Intent.ACTION_VIEW, uri);
+        gtv.setPackage("com.google.android.tv");
+        gtv.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (pm.resolveActivity(gtv, 0) != null) {
+            launch(gtv, "com.google.android.tv");
+            return;
+        }
+
+        // 3. Fallback to TV input selector
+        Intent select = new Intent("com.realtek.tv.action.VIEW_INPUTS");
+        select.setComponent(new ComponentName("com.realtek.tv", "com.realtek.tv.SelectInputActivity"));
+        select.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (pm.resolveActivity(select, 0) != null) {
+            launch(select, "com.realtek.tv");
+            return;
+        }
+
+        // 4. Default intent
+        Intent own = Input.intent(this, cfg, it, Catalog.label(cfg, it));
+        if (own != null) launch(own, null);
+        else launch(new Intent(it.intent), null);
     }
 
     private void launch(Intent i, String pkg) {

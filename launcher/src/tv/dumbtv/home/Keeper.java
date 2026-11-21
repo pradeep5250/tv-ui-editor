@@ -48,17 +48,20 @@ public final class Keeper extends Service {
         c.startService(new Intent(c, Keeper.class));
     }
 
-    private final Runnable poll = new Runnable() {
+    private static final class PollTask implements Runnable {
+        private final Keeper keeper;
+        PollTask(Keeper keeper) { this.keeper = keeper; }
         @Override
         public void run() {
             try {
-                check();
+                keeper.check();
             } catch (Throwable ignored) {
                 // Never let one bad query kill the watchdog.
             }
-            worker.postDelayed(this, POLL_MS);
+            keeper.worker.postDelayed(this, POLL_MS);
         }
-    };
+    }
+    private final Runnable poll = new PollTask(this);
 
     @Override
     @SuppressWarnings("deprecation") // the channel-less builder is the only one Android 7.1 has

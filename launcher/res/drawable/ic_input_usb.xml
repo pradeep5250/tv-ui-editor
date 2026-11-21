@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp"
+    android:height="26dp"
+    android:viewportWidth="26"
+    android:viewportHeight="26">
+    <group
+        android:pivotX="13"
+        android:pivotY="13"
+        android:rotation="-35">
+        <!-- USB metal plug -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.6"
+            android:strokeLineJoin="round"
+            android:pathData="M10,9 V4.5 a1,1 0 0,1 1,-1 h4 a1,1 0 0,1 1,1 V9" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M12,5.5 h2 v1.5 h-2 z" />
+        <!-- USB main drive body -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M8,9 h10 a2,2 0 0,1 2,2 v9.5 a2.5,2.5 0 0,1 -2.5,2.5 h-7 a2.5,2.5 0 0,1 -2.5,-2.5 V11 a2,2 0 0,1 2,-2 z" />
+        <!-- USB trident / logo cutout -->
+        <path
+            android:fillColor="#FF142B4B"
+            android:pathData="M12.4,12 h1.2 v5 h-1.2 z M10.8,14.2 h4.4 v1.1 h-4.4 z M11.5,18.5 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0" />
+    </group>
+</vector>

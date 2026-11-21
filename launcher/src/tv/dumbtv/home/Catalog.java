@@ -50,11 +50,11 @@ final class Catalog {
         }
     }
 
-    /** Loads a banner, plus an icon for Afterglow or when there is no banner. Slow: off the UI thread. */
+    /** Loads a banner and an icon. Slow: off the UI thread. */
     static void art(PackageManager pm, Item it, boolean cornerIcon) {
         if (it.info == null) return;
+        it.icon = it.info.loadIcon(pm);
         it.banner = it.info.loadBanner(pm);
-        if (it.banner == null || cornerIcon) it.icon = it.info.loadIcon(pm);
     }
 
     /**
